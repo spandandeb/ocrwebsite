@@ -1,9 +1,16 @@
 import React, { useState } from 'react';
+import { 
+  ImagePlus, 
+  FileText, 
+  X, 
+  Loader 
+} from 'lucide-react';
 
 function App() {
   const [files, setFiles] = useState([]);
   const [processingResults, setProcessingResults] = useState([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleFileUpload = (event) => {
     const uploadedFiles = event.target.files 
@@ -15,13 +22,44 @@ function App() {
   const processFiles = async (uploadedFiles) => {
     const newFiles = [...files, ...uploadedFiles];
     setFiles(newFiles);
+    setIsProcessing(true);
 
-    const results = newFiles.map(file => ({
-      fileName: file.name,
-      extractedText: 'Processed result placeholder'
-    }));
+    try {
+      const results = await Promise.all(
+        uploadedFiles.map(async (file) => {
+          const formData = new FormData();
+          formData.append('file', file);
 
-    setProcessingResults(results);
+          const response = await fetch('http://localhost:8000/process-image', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Error processing ${file.name}`);
+          }
+
+          const data = await response.json();
+          return {
+            fileName: file.name,
+            extractedText: data.detected_numbers.join(', ') || 'No numbers detected',
+          };
+        })
+      );
+
+      setProcessingResults((prev) => [...prev, ...results]);
+    } catch (error) {
+      console.error('Error processing files:', error);
+      setProcessingResults((prev) => [
+        ...prev,
+        {
+          fileName: 'Error',
+          extractedText: 'Failed to process image. Please try again.',
+        },
+      ]);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const removeFile = (fileToRemove) => {
@@ -50,6 +88,7 @@ function App() {
           ${isDragOver 
             ? 'border-blue-500 bg-blue-50 scale-105 shadow-2xl' 
             : 'border-blue-300 bg-white/70 hover:border-blue-400'}
+          ${isProcessing ? 'opacity-50 pointer-events-none' : ''}
         `}
         onDragOver={(e) => {
           e.preventDefault();
@@ -69,30 +108,22 @@ function App() {
           className="hidden" 
           id="file-upload"
           onChange={handleFileUpload}
+          disabled={isProcessing}
         />
         <label 
           htmlFor="file-upload" 
           className="cursor-pointer flex flex-col items-center justify-center"
         >
-          <svg 
-            xmlns="http://www.w3.org/2000/svg" 
-            className="w-24 h-24 text-blue-500 mb-6 opacity-70"
-            fill="none" 
-            viewBox="0 0 24 24" 
-            stroke="currentColor"
-          >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={1.5} 
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" 
-            />
-          </svg>
+          {isProcessing ? (
+            <Loader className="w-24 h-24 text-blue-500 mb-6 animate-spin" />
+          ) : (
+            <ImagePlus className="w-24 h-24 text-blue-500 mb-6 opacity-70" />
+          )}
           <p className="text-xl text-blue-600 font-semibold">
-            Drag and Drop Meter Reading Images
+            {isProcessing ? 'Processing...' : 'Drag and Drop Meter Reading Images'}
           </p>
           <p className="text-sm text-blue-400 mt-2">
-            or <span className="underline">Click to Upload</span>
+            {!isProcessing && 'or'} <span className="underline">Click to Upload</span>
           </p>
         </label>
       </div>
@@ -107,20 +138,7 @@ function App() {
                 className="bg-white p-4 rounded-lg shadow-md flex items-center justify-between"
               >
                 <div className="flex items-center">
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    className="w-6 h-6 text-blue-500 mr-3" 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
-                    stroke="currentColor"
-                  >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0013.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" 
-                    />
-                  </svg>
+                  <FileText className="w-6 h-6 text-blue-500 mr-3" />
                   <div>
                     <p className="font-medium">{file.name}</p>
                     <p className="text-sm text-gray-500">
@@ -131,21 +149,9 @@ function App() {
                 <button 
                   onClick={() => removeFile(file)}
                   className="text-red-500 hover:bg-red-50 p-2 rounded-full"
+                  disabled={isProcessing}
                 >
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    className="w-5 h-5" 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
-                    stroke="currentColor"
-                  >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d="M6 18L18 6M6 6l12 12" 
-                    />
-                  </svg>
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             ))}
